@@ -1,3 +1,7 @@
+# wifi credentials and other sensitive info
+secrets.h
+platformio.ini
+
 # Object files
 *.o
 *.ko
@@ -31,3 +35,7 @@
 # Debug files
 *.dSYM/
 *.su
+.pioenvs
+.piolibdeps
+.clang_complete
+.gcc-flags.json

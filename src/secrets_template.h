@@ -16,4 +16,6 @@ const char* mqtt_server = "123.123.123.123";
 // MQTT topics to be used
 const char* mqttTopicGeneral = "ptarmiganlabs/led-display-2/general";
 const char* mqttTopicMsg = "ptarmiganlabs/led-display-2/msg";
+const char* mqttTopicViews = "ptarmiganlabs/led-display-2/view/set";
 const char* mqttTopicButtonsPressed = "ptarmiganlabs/led-display-2/buttonsPressed";
+const char* mqttTopicDumpViewsToSerial = "ptarmiganlabs/led-display-2/dumpViewToSerial";

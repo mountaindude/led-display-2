@@ -7,12 +7,16 @@
 #include <InvertedTM1638.h>
 #include <ArduinoJson.h>
 
+#define ENCODER_DO_NOT_USE_INTERRUPTS
+#include <Encoder.h>
+
 #include "secrets.h"
 
+#include <main.h>
+#include <view.h>
+#include "debug.h"
+
 CMMC_OTA ota;
-
-
-#define DEBUG 1;
 
 
 // Sources of inspiration
@@ -30,6 +34,8 @@ TM1638 module(D3, D2, D4);
 unsigned long startTime;
 
 
+
+
 // MQTT related variables
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -40,6 +46,24 @@ int value = 0;
 // Buttons pressed during last scan
 byte lastButtons = 0;
 
+// Hartbeat LED to show that main loop is running
+boolean heartBeatLedStatus = false;
+
+
+#define BUZZER_PIN D1
+#define BUZZER_ON 0
+#define BUZZER_OFF 1
+#define ENCODER_PIN1 D5
+#define ENCODER_PIN2 D6
+#define ENCODER_SWITCH_PIN D0
+
+// Rotary encoder. Avoid using pins with LEDs attached
+Encoder myEnc(ENCODER_PIN1, ENCODER_PIN2);
+long encPosition = -999;
+
+
+VIEWS views;
+byte currentViewId = 0;
 
 
 
@@ -94,10 +118,32 @@ void callback(char* topic, byte* payload, unsigned int length) {
   #endif
 
   String strTopic = topic;
-  if (strTopic == mqttTopicMsg) {
-    #ifndef DEBUG
-      Serial.println("Found msg...");
+
+
+  //
+  // Serial.println(topic);
+
+
+  if (strTopic == mqttTopicDumpViewsToSerial) {
+    #ifdef DEBUG
+      Serial.println("Dumping views to serial port...");
+      Serial.println("# of views: " + views.getViewCount());
     #endif
+
+
+    for (int i=0; views.getViewCount(); i++ ) {
+      views.dumpToSerial();
+    }
+  }
+
+
+  if (strTopic == mqttTopicViews) {
+    #ifdef DEBUG
+      Serial.println("Got view data over MQTT...");
+    #endif
+
+    // Expected payload format is JSON:
+    // {id:"<id>", name:"<name>", value:"123"}
 
     // Get payload in shape
     char payloadStr[length+1];
@@ -119,7 +165,70 @@ void callback(char* topic, byte* payload, unsigned int length) {
     // Test if parsing succeeds
     if (!root.success()) {
       Serial.println("parseObject() failed");
-      module.setDisplayToError();
+      module.setDisplayToString("Error 1");
+      // module.setDisplayToError();
+      return;
+    }
+
+    #ifdef DEBUG
+      Serial.println("JSON parsing ok");
+
+      // Blink 2nd LED green to indicate that JSON was successfully parsed
+      module.setLED(TM1638_COLOR_GREEN, 5);
+      // Optionally also show on display
+      // module.setDisplayToString("JSON ok");
+
+      // Wait for a bit so we have a chance to see the blinking led
+      delay(500);
+
+      // Clear LED
+      module.setLED(0, 5);
+      // module.clearDisplay();
+    #endif
+
+    // Fetch values
+    // Most of the time, you can rely on the implicit casts.
+    // In other case, you can do root["time"].as<long>();
+    // byte viewId = root["id"];
+    // String viewName = root["name"];
+    // String viewValue = root["value"];
+
+    // Update view array
+    views.setView((byte) root["id"], root["name"], root["value"]);
+  }
+
+
+  if (strTopic == mqttTopicMsg) {
+    #ifdef DEBUG
+      Serial.println("Found msg...");
+    #endif
+
+    // Expected payload format is JSON:
+    // {type:"msg value:"123"}
+    // The type field is for future use - right now not used at all.
+
+    // Get payload in shape
+    char payloadStr[length+1];
+    strcpy(payloadStr, (const char *) payload);
+    payloadStr[length] = 0;
+    String input = payloadStr;
+
+    // Memory pool for JSON object tree
+    // Inside the brackets, 200 is the size of the pool in bytes,
+    // If the JSON object is more complex, you need to increase that value.
+    StaticJsonBuffer<200> jsonBuffer;
+
+    // Root of the object tree
+    // It's a reference to the JsonObject, the actual bytes are inside the
+    // JsonBuffer with all the other nodes of the object tree.
+    // Memory is freed when jsonBuffer goes out of scope.
+    JsonObject& root = jsonBuffer.parseObject(input);
+
+    // Test if parsing succeeds
+    if (!root.success()) {
+      Serial.println("parseObject() failed");
+      module.setDisplayToString("Error 2");
+      // module.setDisplayToError();
       return;
     }
 
@@ -148,6 +257,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 
 void setup() {
+
+  // Set up encoder switch
+  pinMode(ENCODER_SWITCH_PIN, INPUT_PULLUP);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, BUZZER_ON);
+  delay(100);
+  digitalWrite(BUZZER_PIN, BUZZER_OFF);
+  // analogWrite(BUZZER_PIN, 254);
+
   module.setupDisplay(true, 7);
 
   init_wifi_hardware();
@@ -166,6 +285,17 @@ void setup() {
   delay(2000);
 
   startTime = millis();
+
+  // digitalWrite(BUZZER_PIN, BUZZER_OFF);
+  // analogWrite(BUZZER_PIN, 255);
+
+  digitalWrite(BUZZER_PIN, BUZZER_ON);
+  delay(150);
+  digitalWrite(BUZZER_PIN, BUZZER_OFF);
+  delay(50);
+  digitalWrite(BUZZER_PIN, BUZZER_ON);
+  delay(50);
+  digitalWrite(BUZZER_PIN, BUZZER_OFF);
 }
 
 char* string2char(String command){
@@ -193,6 +323,7 @@ void update(TM1638* module, byte* displayButtonStatus) {
 void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
+    module.setLED(TM1638_COLOR_RED, 6);
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
     if (client.connect("ESP8266Client")) {
@@ -200,11 +331,10 @@ void reconnect() {
       // Once connected, publish an announcement...
       client.publish(mqttTopicGeneral, "LED display coming online...");
 
-      // ... and resubscribe
-      client.subscribe(mqttTopicGeneral);
-
       // Subscribe to message topics
+      client.subscribe(mqttTopicViews);
       client.subscribe(mqttTopicMsg);
+      client.subscribe(mqttTopicDumpViewsToSerial);
 
     } else {
       Serial.print("failed, rc=");
@@ -215,10 +345,47 @@ void reconnect() {
       delay(5000);
     }
   }
+  module.setLED(TM1638_COLOR_GREEN, 6);
 }
+
+static uint32_t lastCountTime = 0;
 
 void loop() {
   ota.loop();
+
+  long newPos = myEnc.read();
+  if (newPos != encPosition) {
+    encPosition = newPos;
+    Serial.println(encPosition);
+    String pos(encPosition);
+
+    module.clearDisplay();
+    module.setDisplayToString(pos);
+  }
+
+  // Show status encoder switch
+  byte encSwitch = digitalRead(ENCODER_SWITCH_PIN);
+  if(encSwitch == LOW) {
+    module.setLED(TM1638_COLOR_GREEN, 0);
+    encPosition = -999;
+  } else
+  if(encSwitch == HIGH) {
+    module.setLED(TM1638_COLOR_RED, 0);
+  }
+
+
+
+  if ((millis() - lastCountTime) > 1000) {
+      lastCountTime = millis();
+
+      heartBeatLedStatus = !heartBeatLedStatus;
+
+      if (heartBeatLedStatus==true) {
+        module.setLED(TM1638_COLOR_GREEN, 7);
+      } else {
+        module.setLED(0, 7);
+      }
+  }
 
   if (!client.connected()) {
     reconnect();

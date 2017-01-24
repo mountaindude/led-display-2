@@ -6,8 +6,9 @@
 #include <TM1638.h>
 #include <InvertedTM1638.h>
 #include <ArduinoJson.h>
+#include <stdlib.h>
 
-#define ENCODER_DO_NOT_USE_INTERRUPTS
+// #define ENCODER_DO_NOT_USE_INTERRUPTS
 #include <Encoder.h>
 
 #include <secrets.h>
@@ -63,8 +64,8 @@ long encPosition = -999;
 
 
 VIEWS views;
-byte currentViewId = 0;
-
+short currentViewId = 0;
+boolean isShowingValue = false;
 
 
 void init_wifi_hardware()
@@ -102,6 +103,16 @@ void init_wifi_hardware()
   delay(3000);
   module.clearDisplay();
   module.setLEDs(0x00);
+}
+
+
+void UpdateDisplayViewValue()
+{
+  // Disaplay currently selected view's value on display
+  char viewValue[VALUE_LENGTH] = "";
+  views.getViewValue(currentViewId, viewValue);
+  module.clearDisplay();
+  module.setDisplayToString(viewValue);
 }
 
 
@@ -180,7 +191,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     #ifdef DEBUG
       Serial.println("JSON parsing ok");
 
-      // Blink 2nd LED green to indicate that JSON was successfully parsed
+      // Blink LED green to indicate that JSON was successfully parsed
       module.setLED(TM1638_COLOR_GREEN, 5);
       // Optionally also show on display
       // module.setDisplayToString("JSON ok");
@@ -196,13 +207,23 @@ void callback(char* topic, byte* payload, unsigned int length) {
     // Fetch values
     // Most of the time, you can rely on the implicit casts.
     // In other case, you can do root["time"].as<long>();
-    // byte viewId = root["id"];
-    // String viewName = root["name"];
-    // String viewValue = root["value"];
 
-    // Update view array
-    views.setView((byte) root["id"], root["name"], root["value"]);
-    Serial.println("View updated");
+    // Update view array if passed in id is within valid range
+    if ((root["id"] >= 0) && (root["id"] < VIEW_COUNT)) {
+      views.setView((byte) root["id"], root["name"], root["value"]);
+
+      // Blink LED #5 red
+      module.setLED(TM1638_COLOR_GREEN, 5);
+      delay(1000);
+      module.setLED(0,5);
+    }
+
+    // Update currently showing view with potentially new data (if it was the active view that was updated)
+    UpdateDisplayViewValue();
+
+    #ifdef DEBUG
+      Serial.println("View updated");
+    #endif
   }
   //
   //
@@ -365,25 +386,56 @@ void loop() {
   ota.loop();
 
   long newPos = myEnc.read();
-  if (newPos != encPosition) {
-    encPosition = newPos;
-    Serial.println(encPosition);
-    String pos(encPosition);
+  if ((newPos != encPosition) && (newPos % 4 == 0)) {
+    if (newPos < encPosition) {
+      // Turning counter clockwise
+      currentViewId--;
+      if (currentViewId < 0) currentViewId = VIEW_COUNT-1;
+
+      #ifdef DEBUG
+        Serial.print("currentViewId="); Serial.println(currentViewId);
+      #endif
+
+      encPosition = newPos;
+    }
+
+    if (newPos > encPosition) {
+      // Turning clockwise
+      currentViewId++;
+      if (currentViewId == VIEW_COUNT) currentViewId = 0;
+
+      #ifdef DEBUG
+        Serial.print("currentViewId="); Serial.println(currentViewId);
+      #endif
+
+      encPosition = newPos;
+    }
+
+    // Show current view name on display
+    char viewName[NAME_LENGTH] = "";
+    views.getViewName(currentViewId, viewName);
+
+    #ifdef DEBUG
+      Serial.print("View name="); Serial.println(viewName);
+    #endif
 
     module.clearDisplay();
-    module.setDisplayToString(pos);
+    module.setDisplayToString(viewName);
   }
 
   // Show status encoder switch
   byte encSwitch = digitalRead(ENCODER_SWITCH_PIN);
   if(encSwitch == LOW) {
-    module.setLED(TM1638_COLOR_GREEN, 0);
-    encPosition = -999;
-  } else
-  if(encSwitch == HIGH) {
-    module.setLED(TM1638_COLOR_RED, 0);
-  }
+    // Encoder button pressed
 
+    // Enter ShowViewValue state
+    isShowingValue = true;
+
+    // Show value of currently selected view
+    UpdateDisplayViewValue();
+
+    // module.setLED(TM1638_COLOR_GREEN, 0);
+  }
 
 
   if ((millis() - lastCountTime) > 1000) {

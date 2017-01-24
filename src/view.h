@@ -1,11 +1,9 @@
 #include <arduino.h>
 #include <PubSubClient.h>
+#include <main.h>
 
 // #define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
 
-#define VIEW_COUNT 5
-#define NAME_LENGTH 16
-#define VALUE_LENGTH 16
 
 
 
@@ -16,6 +14,8 @@ class VIEW {
     VIEW(byte newId, const char *newName, const char *newValue);
     void setView(byte newId, const char *newName, const char *newValue);
     void getIdNameValue(byte *id, char *name, char *value);
+    void getName(char* name);
+    void getValue(char* value);
 
   private:
     byte id;

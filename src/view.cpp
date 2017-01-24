@@ -5,7 +5,7 @@ VIEW::VIEW ()
 {
   // Initialize
   id = -1;
-  strcpy(name, "");
+  strcpy(name, "--------");
   strcpy(value, "");
 }
 
@@ -19,9 +19,9 @@ VIEW::VIEW (byte newId, const char *newName, const char *newValue)
 void VIEW::setView(byte newId, const char *newName, const char *newValue)
 {
   #ifdef DEBUG
-    Serial.println("Updating view:");
+    Serial.println("Updating view, new data:");
     Serial.print("   ID="); Serial.print(newId);
-    Serial.print(", Name="); Serial.print(name);
+    Serial.print(", Name="); Serial.print(newName);
     Serial.print(", Value="); Serial.println(newValue);
   #endif
 
@@ -35,6 +35,16 @@ void VIEW::getIdNameValue(byte *id, char *newName, char *newValue)
   *id = this->id;
   strcpy(newName, (const char*) name);
   strcpy(newValue, (const char*) value);
+}
+
+void VIEW::getName(char *name1)
+{
+  strcpy(name1, (const char *) name);
+}
+
+void VIEW::getValue(char *value1)
+{
+  strcpy(value1, (const char *) value);
 }
 
 
@@ -59,6 +69,19 @@ void VIEWS::getView(byte id, VIEW *viewPtr)
 {
   memcpy(viewPtr, &(views[id]), sizeof(VIEW));
 }
+
+
+void VIEWS::getViewName(byte id, char *name)
+{
+  views[id].getName(name);
+}
+
+
+void VIEWS::getViewValue(byte id, char *value)
+{
+  views[id].getValue(value);
+}
+
 
 
 byte VIEWS::getViewCount()

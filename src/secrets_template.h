@@ -18,4 +18,5 @@ const char* mqttTopicGeneral = "ptarmiganlabs/led-display-2/general";
 const char* mqttTopicMsg = "ptarmiganlabs/led-display-2/msg";
 const char* mqttTopicViews = "ptarmiganlabs/led-display-2/view/set";
 const char* mqttTopicButtonsPressed = "ptarmiganlabs/led-display-2/buttonsPressed";
-const char* mqttTopicDumpViewsToSerial = "ptarmiganlabs/led-display-2/dumpViewToSerial";
+const char* mqttTopicDumpViews = "ptarmiganlabs/led-display-2/dumpViews";
+const char* mqttTopicDumpViewsData = "ptarmiganlabs/led-display-2/dumpViews/data";

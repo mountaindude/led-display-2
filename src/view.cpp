@@ -1,80 +1,116 @@
 #include <view.h>
 #include "debug.h"
-#include <arduino.h>
 
 VIEW::VIEW ()
 {
   // Initialize
   id = -1;
-  name = "";
-  value = "";
+  strcpy(name, "");
+  strcpy(value, "");
 }
 
-
-VIEW::VIEW (byte newId, String newName, String newValue)
+VIEW::VIEW (byte newId, const char *newName, const char *newValue)
 {
   // Initialize
   setView(newId, newName, newValue);
 }
 
 
-void VIEW::setView(byte newId, String newName, String newValue)
+void VIEW::setView(byte newId, const char *newName, const char *newValue)
 {
   #ifdef DEBUG
-    // Print values
     Serial.println("Updating view:");
-    Serial.println("   ID=" + (String) newId + ", Name=" + newName + ", Value=" + newValue);
+    Serial.print("   ID="); Serial.print(newId);
+    Serial.print(", Name="); Serial.print(name);
+    Serial.print(", Value="); Serial.println(newValue);
   #endif
 
-
-  this->id = newId;
-  this->name = newName;
-  this->value = newValue;
+  id = newId;
+  strncpy(name, newName, NAME_LENGTH);
+  strncpy(value, newValue, VALUE_LENGTH);
 }
 
-
-void VIEW::dumpViewToSerial()
+void VIEW::getIdNameValue(byte *id, char *newName, char *newValue)
 {
-  Serial.println("View contents: ID=" + (String) id + ", Name=" + name + ", Value=" + value);
+  *id = this->id;
+  strcpy(newName, (const char*) name);
+  strcpy(newValue, (const char*) value);
 }
-
 
 
 // ------------------
+//
+// ------------------
 VIEWS::VIEWS()
 {
-  for(byte i=0; i<=MAX_VIEW; i++) {
-    views[i].setView(i, "", "");
-  }
+  // for(byte i=0; i<=VIEW_COUNT; i++) {
+  //   views[i].setView(i, "", "");
+  // }
 }
 
-// (VIEW *) VIEWS::getView(byte viewId)
-// {
-//   return &(views[viewId]);
-// }
-
-void VIEWS::setView(byte newId, String newName, String newValue)
+void VIEWS::setView(byte newId, const char *newName, const char *newValue)
 {
   views[newId].setView(newId, newName, newValue);
 }
 
+
+
+void VIEWS::getView(byte id, VIEW *viewPtr)
+{
+  memcpy(viewPtr, &(views[id]), sizeof(VIEW));
+}
+
+
 byte VIEWS::getViewCount()
 {
-  #ifdef DEBUG
-    Serial.println("# of views=" + NELEMS(views));
-  #endif
-
-  return NELEMS(views);
+  return VIEW_COUNT;
 }
 
 void VIEWS::dumpToSerial()
 {
-  for (byte i=0; i<NELEMS(views); i++) {
+  byte id;
+  char name[NAME_LENGTH];
+  char value[VALUE_LENGTH];
+  VIEW tmpView;
 
+  for (int i=0; i < this->getViewCount(); i++ ) {
+    this->getView(i, &tmpView);
+    tmpView.getIdNameValue(&id, name, value);
+
+    Serial.print("View id="); Serial.print(id);
+    Serial.print(", name="); Serial.print(name);
+    Serial.print(", value="); Serial.println(value);
   }
 }
 
-void VIEWS::dumpToMQTT(char *topic)
+void VIEWS::dumpToMQTT(PubSubClient *client, const char *topic)
 {
+  byte id;
+  char idStr[5];
+  char name[NAME_LENGTH];
+  char value[VALUE_LENGTH];
+  VIEW tmpView;
 
+  for (int i=0; i < this->getViewCount(); i++ ) {
+    this->getView(i, &tmpView);
+    tmpView.getIdNameValue(&id, name, value);
+
+    // Build JSON response
+    // There are 25 "structural" characters in desired JSON format:
+    // {id:"<id>", name:"<name>", value:"123"}
+    // Add 10 extra characters to be safe...
+
+    itoa(id, idStr, 10);
+
+    char json[25 + 5 + 16 + 16 + 10] = "{id:\"";
+    strcat(json, idStr);
+    strcat(json, "\", name:\"");
+    strcat(json, name);
+    strcat(json, "\", value:\"");
+    strcat(json, value);
+    strcat(json, "\"}");
+
+
+    client->publish(topic, json);
+  }
 }

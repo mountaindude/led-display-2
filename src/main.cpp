@@ -10,9 +10,9 @@
 #define ENCODER_DO_NOT_USE_INTERRUPTS
 #include <Encoder.h>
 
-#include "secrets.h"
+#include <secrets.h>
 
-#include <main.h>
+// #include <main.h>
 #include <view.h>
 #include "debug.h"
 
@@ -117,39 +117,45 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.println();
   #endif
 
-  String strTopic = topic;
+  // String strTopic = topic;
 
+  // Get payload in shape
+  // char payloadStr[length+1];
+  char* payloadStr = (char*) malloc(length+1);
+  memcpy(payloadStr, (char *) payload, length);
+  payloadStr[length] = 0;
 
-  //
-  // Serial.println(topic);
+  // Serial.print(strlen(payloadStr));
+  // Serial.print("-");
+  // Serial.println(payloadStr);
 
+  if (strcmp(topic, mqttTopicDumpViews) == 0) {
+    if(strcmp(payloadStr, "serial") == 0) {
+      #ifdef DEBUG
+        Serial.println("Dumping views to serial");
+        // Serial.print("# of views: "); Serial.println(views.getViewCount());
+      #endif
 
-  if (strTopic == mqttTopicDumpViewsToSerial) {
-    #ifdef DEBUG
-      Serial.println("Dumping views to serial port...");
-      Serial.println("# of views: " + views.getViewCount());
-    #endif
-
-
-    for (int i=0; views.getViewCount(); i++ ) {
       views.dumpToSerial();
+    }
+    // else if (strPayload == "mqtt") {
+    else if (strcmp(payloadStr, "mqtt") == 0) {
+      #ifdef DEBUG
+        Serial.println("Dumping views to MQTT");
+      #endif
+
+      views.dumpToMQTT(&client, mqttTopicDumpViewsData);
     }
   }
 
 
-  if (strTopic == mqttTopicViews) {
+  if (strcmp(topic, mqttTopicViewSet) == 0) {
     #ifdef DEBUG
-      Serial.println("Got view data over MQTT...");
+      Serial.println("Got new view data over MQTT");
     #endif
 
     // Expected payload format is JSON:
     // {id:"<id>", name:"<name>", value:"123"}
-
-    // Get payload in shape
-    char payloadStr[length+1];
-    strcpy(payloadStr, (const char *) payload);
-    payloadStr[length] = 0;
-    String input = payloadStr;
 
     // Memory pool for JSON object tree
     // Inside the brackets, 200 is the size of the pool in bytes,
@@ -160,13 +166,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
     // It's a reference to the JsonObject, the actual bytes are inside the
     // JsonBuffer with all the other nodes of the object tree.
     // Memory is freed when jsonBuffer goes out of scope.
-    JsonObject& root = jsonBuffer.parseObject(input);
+    JsonObject& root = jsonBuffer.parseObject(payloadStr);
 
     // Test if parsing succeeds
     if (!root.success()) {
       Serial.println("parseObject() failed");
       module.setDisplayToString("Error 1");
       // module.setDisplayToError();
+      free(payloadStr);
       return;
     }
 
@@ -195,63 +202,67 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
     // Update view array
     views.setView((byte) root["id"], root["name"], root["value"]);
+    Serial.println("View updated");
   }
+  //
+  //
+  // if (strTopic == mqttTopicMsg) {
+  //   #ifdef DEBUG
+  //     Serial.println("Found msg...");
+  //   #endif
+  //
+  //   // Expected payload format is JSON:
+  //   // {type:"msg value:"123"}
+  //   // The type field is for future use - right now not used at all.
+  //
+  //   // Get payload in shape
+  //   char payloadStr[length+1];
+  //   strcpy(payloadStr, (const char *) payload);
+  //   payloadStr[length] = 0;
+  //   String input = payloadStr;
+  //
+  //   // Memory pool for JSON object tree
+  //   // Inside the brackets, 200 is the size of the pool in bytes,
+  //   // If the JSON object is more complex, you need to increase that value.
+  //   StaticJsonBuffer<200> jsonBuffer;
+  //
+  //   // Root of the object tree
+  //   // It's a reference to the JsonObject, the actual bytes are inside the
+  //   // JsonBuffer with all the other nodes of the object tree.
+  //   // Memory is freed when jsonBuffer goes out of scope.
+  //   JsonObject& root = jsonBuffer.parseObject(input);
+  //
+  //   // Test if parsing succeeds
+  //   if (!root.success()) {
+  //     Serial.println("parseObject() failed");
+  //     module.setDisplayToString("Error 2");
+  //     // module.setDisplayToError();
+      // free(payloadStr);
+//     return;
+  //   }
+  //
+  //   #ifdef DEBUG
+  //     Serial.println("JSON parsing ok");
+  //     module.setDisplayToString("JSON ok");
+  //     delay(1000);
+  //   #endif
+  //
+  //   // Fetch values
+  //   // Most of the time, you can rely on the implicit casts.
+  //   // In other case, you can do root["time"].as<long>();
+  //   String msgType = root["type"];
+  //   String msgValue = root["value"];
+  //
+  //   // Print values
+  //   Serial.println(msgType);
+  //   Serial.println(msgValue);
+  //
+  //   // Send to LEDs after first clearing display
+  //   module.clearDisplay();
+  //   module.setDisplayToString(msgValue);
+  // }
 
-
-  if (strTopic == mqttTopicMsg) {
-    #ifdef DEBUG
-      Serial.println("Found msg...");
-    #endif
-
-    // Expected payload format is JSON:
-    // {type:"msg value:"123"}
-    // The type field is for future use - right now not used at all.
-
-    // Get payload in shape
-    char payloadStr[length+1];
-    strcpy(payloadStr, (const char *) payload);
-    payloadStr[length] = 0;
-    String input = payloadStr;
-
-    // Memory pool for JSON object tree
-    // Inside the brackets, 200 is the size of the pool in bytes,
-    // If the JSON object is more complex, you need to increase that value.
-    StaticJsonBuffer<200> jsonBuffer;
-
-    // Root of the object tree
-    // It's a reference to the JsonObject, the actual bytes are inside the
-    // JsonBuffer with all the other nodes of the object tree.
-    // Memory is freed when jsonBuffer goes out of scope.
-    JsonObject& root = jsonBuffer.parseObject(input);
-
-    // Test if parsing succeeds
-    if (!root.success()) {
-      Serial.println("parseObject() failed");
-      module.setDisplayToString("Error 2");
-      // module.setDisplayToError();
-      return;
-    }
-
-    #ifdef DEBUG
-      Serial.println("JSON parsing ok");
-      module.setDisplayToString("JSON ok");
-      delay(1000);
-    #endif
-
-    // Fetch values
-    // Most of the time, you can rely on the implicit casts.
-    // In other case, you can do root["time"].as<long>();
-    String msgType = root["type"];
-    String msgValue = root["value"];
-
-    // Print values
-    Serial.println(msgType);
-    Serial.println(msgValue);
-
-    // Send to LEDs after first clearing display
-    module.clearDisplay();
-    module.setDisplayToString(msgValue);
-  }
+  free(payloadStr);
 
 }
 
@@ -332,9 +343,9 @@ void reconnect() {
       client.publish(mqttTopicGeneral, "LED display coming online...");
 
       // Subscribe to message topics
-      client.subscribe(mqttTopicViews);
+      client.subscribe(mqttTopicViewSet);
       client.subscribe(mqttTopicMsg);
-      client.subscribe(mqttTopicDumpViewsToSerial);
+      client.subscribe(mqttTopicDumpViews);
 
     } else {
       Serial.print("failed, rc=");

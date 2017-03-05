@@ -141,6 +141,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   // Serial.println(payloadStr);
 
   if (strcmp(topic, mqttTopicDumpViews) == 0) {
+    // Dump all views to serial or mqtt
     if(strcmp(payloadStr, "serial") == 0) {
       #ifdef DEBUG
         Serial.println("Dumping views to serial");
